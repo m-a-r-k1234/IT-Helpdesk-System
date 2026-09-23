@@ -3,8 +3,12 @@ from fastapi import FastAPI, Depends
 from app.database import Base, engine
 from app.models import User, Category, Ticket, Comment, TicketHistory
 from app.routers.auth import router as auth_router
-from app.core.dependencies import get_current_user
+from app.core.dependencies import (
+    get_current_user,
+    require_role
+)
 from app.models.user import User
+from app.routers.tickets import router as tickets_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -17,7 +21,7 @@ app = FastAPI(
 
 
 app.include_router(auth_router)
-
+app.include_router(tickets_router)
 
 @app.get("/")
 def root():
@@ -36,3 +40,5 @@ def get_me(
         "email": current_user.email,
         "role": current_user.role
     }
+
+

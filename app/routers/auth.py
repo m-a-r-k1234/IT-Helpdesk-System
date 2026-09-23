@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
+from fastapi.security import OAuth2PasswordRequestForm
 from app.database import SessionLocal
 from app.models.user import User
 from app.schemas.auth import RegisterRequest, LoginRequest
@@ -61,12 +61,12 @@ def register(
 
 @router.post("/login")
 def login(
-    login_data: LoginRequest,
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
     user = (
         db.query(User)
-        .filter(User.email == login_data.email)
+        .filter(User.email == form_data.username)
         .first()
     )
 
@@ -77,7 +77,7 @@ def login(
         )
 
     if not verify_password(
-        login_data.password,
+        form_data.password,
         user.password_hash
     ):
         raise HTTPException(
