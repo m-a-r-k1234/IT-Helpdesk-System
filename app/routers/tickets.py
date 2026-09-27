@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
+from datetime import datetime
 from app.core.dependencies import (
     get_current_user,
     require_role
@@ -193,7 +193,9 @@ def get_all_tickets(
 def update_ticket(
     ticket_id: int,
     ticket_data: TicketUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_role("analyst", "admin")
+    ),
     db: Session = Depends(get_db)
 ):
     ticket = (
@@ -209,10 +211,13 @@ def update_ticket(
         )
 
     # Only the ticket creator can update their ticket
-    if ticket.created_by != current_user.id:
+    if (
+        current_user.role == "analyst"
+        and ticket.assigned_to != current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own tickets"
+            detail="You can only update tickets assigned to you"
         )
 
     # Closed tickets cannot be updated
@@ -241,8 +246,15 @@ def update_ticket(
             )
 
         old_status = ticket.status
-
         ticket.status = ticket_data.status
+
+        # Automatically record resolution time
+        if ticket_data.status == "RESOLVED":
+            ticket.resolved_at = datetime.utcnow()
+
+        # Automatically record closing time
+        if ticket_data.status == "CLOSED":
+            ticket.closed_at = datetime.utcnow()
 
         create_ticket_history(
             db=db,
