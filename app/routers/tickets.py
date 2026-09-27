@@ -145,6 +145,42 @@ def get_my_tickets(
 
     return tickets
 
+@router.get(
+    "/assigned",
+    response_model=list[TicketResponse]
+)
+def get_assigned_tickets(
+    current_user: User = Depends(
+        require_role("analyst", "admin")
+    ),
+    db: Session = Depends(get_db)
+):
+    tickets = (
+        db.query(Ticket)
+        .filter(Ticket.assigned_to == current_user.id)
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
+
+    return tickets
+
+@router.get(
+    "/all",
+    response_model=list[TicketResponse]
+)
+def get_all_tickets(
+    current_user: User = Depends(
+        require_role("admin")
+    ),
+    db: Session = Depends(get_db)
+):
+    tickets = (
+        db.query(Ticket)
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
+
+    return tickets
 
 # =========================
 # Update Ticket
@@ -435,3 +471,4 @@ def get_ticket_history(
     )
 
     return history
+
