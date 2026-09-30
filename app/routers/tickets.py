@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.core.dependencies import (
@@ -181,7 +181,76 @@ def get_all_tickets(
     )
 
     return tickets
+@router.get("/admin/filter", response_model=list[TicketResponse])
+def filter_tickets(
+    ticket_status: str | None = Query(default=None),
+    current_user: User = Depends(
+        require_role("admin")
+    ),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Ticket)
 
+    if ticket_status:
+        query = query.filter(
+            Ticket.status == ticket_status
+        )
+
+    tickets = (
+        query
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
+
+    return tickets
+
+@router.get("/admin/stats")
+def get_ticket_stats(
+    current_user: User = Depends(
+        require_role("admin")
+    ),
+    db: Session = Depends(get_db)
+):
+    total = db.query(Ticket).count()
+
+    open_tickets = (
+        db.query(Ticket)
+        .filter(Ticket.status == "OPEN")
+        .count()
+    )
+
+    in_progress = (
+        db.query(Ticket)
+        .filter(Ticket.status == "IN_PROGRESS")
+        .count()
+    )
+
+    waiting_for_user = (
+        db.query(Ticket)
+        .filter(Ticket.status == "WAITING_FOR_USER")
+        .count()
+    )
+
+    resolved = (
+        db.query(Ticket)
+        .filter(Ticket.status == "RESOLVED")
+        .count()
+    )
+
+    closed = (
+        db.query(Ticket)
+        .filter(Ticket.status == "CLOSED")
+        .count()
+    )
+
+    return {
+        "total": total,
+        "open": open_tickets,
+        "in_progress": in_progress,
+        "waiting_for_user": waiting_for_user,
+        "resolved": resolved,
+        "closed": closed
+    }
 # =========================
 # Update Ticket
 # =========================
@@ -251,16 +320,26 @@ def update_ticket(
         # Automatically record resolution time
         if ticket_data.status == "RESOLVED":
             ticket.resolved_at = datetime.utcnow()
+            
+        if ticket_data.status == "IN_PROGRESS" and old_status == "RESOLVED":
+            ticket.resolved_at = None
 
         # Automatically record closing time
         if ticket_data.status == "CLOSED":
             ticket.closed_at = datetime.utcnow()
 
+        if ticket_data.status == "RESOLVED":
+            action = "TICKET_RESOLVED"
+        elif ticket_data.status == "CLOSED":
+            action = "TICKET_CLOSED"
+        else:
+            action = "STATUS_CHANGED"
+
         create_ticket_history(
             db=db,
             ticket_id=ticket.id,
             user_id=current_user.id,
-            action="STATUS_CHANGED",
+            action=action,
             old_value=old_status,
             new_value=ticket_data.status
         )
@@ -381,7 +460,11 @@ def create_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ticket not found"
         )
-
+    if ticket.status == "CLOSED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Closed tickets cannot receive new comments"
+        )
     # Only users involved with the ticket can comment
     if (
         ticket.created_by != current_user.id
