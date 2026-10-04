@@ -1,4 +1,7 @@
 from fastapi import FastAPI, Depends
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.database import Base, engine
 from app.models import User, Category, Ticket, Comment, TicketHistory
@@ -20,6 +23,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+WEB_DIR = Path(__file__).parent / "web"
+app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
 
 app.include_router(auth_router)
 app.include_router(tickets_router)
@@ -28,9 +34,7 @@ app.include_router(categories_router)
 
 @app.get("/")
 def root():
-    return {
-        "message": "IT Help Desk API is running"
-    }
+    return FileResponse(WEB_DIR / "index.html")
 
 @app.get("/me")
 def get_me(
